@@ -12,19 +12,6 @@ import '../../services/ssh_service.dart';
 import '../widgets/ambient_background.dart';
 import '../widgets/common.dart';
 
-const Map<String, String> _envForProvider = {
-  'openai': 'OPENAI_API_KEY',
-  'anthropic': 'ANTHROPIC_API_KEY',
-  'gemini': 'GEMINI_API_KEY',
-  'groq': 'GROQ_API_KEY',
-  'deepseek': 'DEEPSEEK_API_KEY',
-  'xai': 'XAI_API_KEY',
-  'mistral': 'MISTRAL_API_KEY',
-  'openrouter': 'OPENROUTER_API_KEY',
-  'together': 'TOGETHER_API_KEY',
-  'cohere': 'COHERE_API_KEY',
-};
-
 enum _Stage { form, setup, terminal }
 
 enum _StepState { pending, active, done, failed }
@@ -78,8 +65,37 @@ class _TerminalScreenState extends State<TerminalScreen> {
       _SetupStep(l.stepConnect),
       _SetupStep(l.stepDeps),
       _SetupStep(l.stepOpencode),
+      if (!_useFree) _SetupStep(l.stepConfigure),
       _SetupStep(l.stepLaunch),
     ];
+  }
+
+  /// OpenCode config (~/.config/opencode/opencode.jsonc) pointing at the user's
+  /// provider so it stops falling back to the built-in free models.
+  String _opencodeConfigJson() {
+    final app = context.read<AppState>();
+    final p = app.activeProvider;
+    final model = app.settings.activeModel;
+    if (p == null || model.isEmpty || _apiKey.isEmpty) return '';
+    final isAnthropic = p.format.name == 'anthropic';
+    final cfg = {
+      '\$schema': 'https://opencode.ai/config.json',
+      'provider': {
+        'arcade': {
+          'npm': isAnthropic ? '@ai-sdk/anthropic' : '@ai-sdk/openai-compatible',
+          'name': p.name,
+          'options': {
+            if (!isAnthropic && p.baseUrl.isNotEmpty) 'baseURL': p.baseUrl,
+            'apiKey': _apiKey,
+          },
+          'models': {
+            model: {'name': model}
+          },
+        }
+      },
+      'model': 'arcade/$model',
+    };
+    return jsonEncode(cfg);
   }
 
   Future<void> _loadProfiles() async {
@@ -126,17 +142,9 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   String _launchCommand() {
-    final p = context.read<AppState>().activeProvider;
-    final model = context.read<AppState>().settings.activeModel;
-    final env = _envForProvider[p?.id] ?? 'OPENAI_API_KEY';
+    // Provider/model now live in the OpenCode config file (written during setup
+    // when "my data" is chosen), so the launch itself stays clean.
     final b = StringBuffer();
-    if (!_useFree) {
-      if (_apiKey.isNotEmpty) b.write('export $env="$_apiKey"; ');
-      if (p != null && p.format.name == 'openai' && p.baseUrl.isNotEmpty) {
-        b.write('export OPENAI_BASE_URL="${p.baseUrl}"; ');
-      }
-      if (model.isNotEmpty) b.write('export OPENCODE_MODEL="$model"; ');
-    }
     if (_auto) b.write('export OPENCODE_AUTO_APPROVE=1; ');
     b.write('opencode');
     return b.toString();
@@ -162,26 +170,43 @@ class _TerminalScreenState extends State<TerminalScreen> {
       _showLog = false;
     });
 
-    _set(0, _StepState.active);
+    var i = 0;
+    _set(i, _StepState.active);
     final ok = await _ssh.connect(
         host: host,
         port: int.tryParse(_port.text.trim()) ?? 22,
         username: user,
         password: _pass.text);
-    if (!ok) return _set(0, _StepState.failed, _ssh.error ?? 'connect failed');
-    _set(0, _StepState.done);
+    if (!ok) return _set(i, _StepState.failed, _ssh.error ?? 'connect failed');
+    _set(i, _StepState.done);
+    i++;
 
-    _set(1, _StepState.active);
+    _set(i, _StepState.active);
     final deps = await _ssh.exec(kInstallDepsCmd);
-    if (!deps.ok) return _set(1, _StepState.failed, deps.output);
-    _set(1, _StepState.done);
+    if (!deps.ok) return _set(i, _StepState.failed, deps.output);
+    _set(i, _StepState.done);
+    i++;
 
-    _set(2, _StepState.active);
+    _set(i, _StepState.active);
     final oc = await _ssh.exec(kInstallOpencodeCmd);
-    if (!oc.ok) return _set(2, _StepState.failed, oc.output);
-    _set(2, _StepState.done);
+    if (!oc.ok) return _set(i, _StepState.failed, oc.output);
+    _set(i, _StepState.done);
+    i++;
 
-    _set(3, _StepState.active);
+    if (!_useFree) {
+      _set(i, _StepState.active);
+      final cfg = _opencodeConfigJson();
+      if (cfg.isNotEmpty) {
+        final b64 = base64.encode(utf8.encode(cfg));
+        final w = await _ssh.exec(
+            "mkdir -p ~/.config/opencode && printf '%s' '$b64' | base64 -d > ~/.config/opencode/opencode.jsonc");
+        if (!w.ok) return _set(i, _StepState.failed, w.output);
+      }
+      _set(i, _StepState.done);
+      i++;
+    }
+
+    _set(i, _StepState.active);
     setState(() => _stage = _Stage.terminal);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ssh.startShell(_terminal, initialCommand: _launchCommand());

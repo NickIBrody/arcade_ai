@@ -24,6 +24,8 @@ own endpoint (Polza AI, a proxy, or a local Ollama server).
 - **Reasoning view** — for thinking models (o-series, DeepSeek R1, Claude with
   extended thinking) a collapsible panel shows *how* the model reasoned before answering.
 - **Vision** — attach photos to your message where the model supports it.
+- **Compare two models** — long-press Send to ask two models the same prompt
+  side by side, then keep the better answer and continue with it.
 - **Bilingual UI** — English / Russian, picked on the welcome screen, switchable later.
 - **Security first** — API keys live in the hardware-backed **Android Keystore**
   (AES-GCM); optional **biometric auto-lock** on reopen.
@@ -67,12 +69,11 @@ The principle: every language must pull its weight, not pad a buzzword list.
 
 ## Remote SSH terminal + OpenCode (experimental)
 
-> ⚠️ **Rough around the edges / work in progress.** The OpenCode integration is
-> hacked together and not battle-tested — treat it as an experiment, not a
-> finished feature. **In practice it currently works rather poorly: most of the
-> time only the free OpenCode models load (passing your own provider/key/model
-> via env often isn't picked up), and setting it up by hand is no better.**
-> Proper fix (writing OpenCode's config file) is still a TODO.
+> **Working.** The setup writes OpenCode's config file
+> (`~/.config/opencode/opencode.jsonc`) with your provider, base URL, key and
+> model, so OpenCode runs on **your** model instead of falling back to the free
+> built-ins. Still young — treat the terminal as an early feature — but the core
+> "your provider in OpenCode" flow works.
 
 A separate **Terminal (BETA)** screen (open it from the chat drawer) turns the
 app into a thin client for an agentic coding session running on **your own
@@ -97,10 +98,11 @@ Built on `dartssh2` (SSH client) + `xterm` (terminal emulator) — the SSH proto
 and the emulator are libraries; the app is the glue + provisioning + UI.
 
 **Known rough edges:**
-- Provider/key/URL/model are injected via **environment variables** as a
-  best-effort. OpenCode may read its own config file instead and **fall back to
-  free models** — writing OpenCode's config file is the proper fix (TODO).
-- The *auto/bypass* mode uses a guessed env var; the real flag is unverified.
+- Your provider/key/URL/model are written into OpenCode's config file, so it
+  uses your model. Pick **My data** for that, or **Free** for OpenCode's
+  built-in models.
+- The *auto/bypass* mode uses a best-effort env var; the exact flag may vary by
+  OpenCode version.
 - Reachability: same LAN works; a machine behind NAT needs Tailscale / a public
   IP / port forwarding.
 - Installing packages needs root or passwordless sudo; otherwise the install

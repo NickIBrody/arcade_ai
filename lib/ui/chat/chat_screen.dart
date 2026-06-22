@@ -63,6 +63,71 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollDown();
   }
 
+  void _startCompare() {
+    final app = context.read<AppState>();
+    final text = _input.text.trim();
+    if (text.isEmpty || app.sending) return;
+    final others = app.modelsForActive
+        .where((m) => m != app.settings.activeModel)
+        .toList();
+    if (others.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: AppColors.surfaceHigh,
+        content: Text(l.compareWith,
+            style: const TextStyle(color: AppColors.textPrimary)),
+      ));
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(AppRadii.lg))),
+      builder: (_) => SafeArea(
+        child: Container(
+          constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.6),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${l.compareWith}  (${app.settings.activeModel})',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 12),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: others
+                      .map((m) => ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.balance_rounded,
+                                color: AppColors.violetSoft, size: 20),
+                            title: Text(m,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    color: AppColors.textPrimary)),
+                            onTap: () {
+                              Navigator.pop(context);
+                              _input.clear();
+                              setState(() => _pending.clear());
+                              app.compareSend(text, m);
+                              _scrollDown();
+                            },
+                          ))
+                      .toList(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
@@ -114,7 +179,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 sending: app.sending,
                 onSend: _send,
                 onStop: app.stopGenerating,
-                onImage: provider?.supportsVision == true ? _pickImage : null,
+                onCompare: _startCompare,
+                onImage: _pickImage,
                 onRemoveImage: (i) => setState(() => _pending.removeAt(i)),
               ),
             ],
@@ -342,6 +408,7 @@ class _Composer extends StatelessWidget {
   final bool sending;
   final VoidCallback onSend;
   final VoidCallback onStop;
+  final VoidCallback onCompare;
   final VoidCallback? onImage;
   final ValueChanged<int> onRemoveImage;
 
@@ -352,6 +419,7 @@ class _Composer extends StatelessWidget {
     required this.sending,
     required this.onSend,
     required this.onStop,
+    required this.onCompare,
     required this.onImage,
     required this.onRemoveImage,
   });
@@ -432,7 +500,11 @@ class _Composer extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              _SendButton(sending: sending, onTap: onSend, onStop: onStop),
+              _SendButton(
+                  sending: sending,
+                  onTap: onSend,
+                  onStop: onStop,
+                  onLongPress: onCompare),
             ],
           ),
         ],
@@ -445,12 +517,17 @@ class _SendButton extends StatelessWidget {
   final bool sending;
   final VoidCallback onTap;
   final VoidCallback onStop;
+  final VoidCallback onLongPress;
   const _SendButton(
-      {required this.sending, required this.onTap, required this.onStop});
+      {required this.sending,
+      required this.onTap,
+      required this.onStop,
+      required this.onLongPress});
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: sending ? onStop : onTap,
+      onLongPress: sending ? null : onLongPress,
       child: Container(
         width: 48,
         height: 48,

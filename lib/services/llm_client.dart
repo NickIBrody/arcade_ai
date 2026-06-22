@@ -88,6 +88,18 @@ class LlmClient {
       throw LlmException(await _errorText(res));
     }
 
+    if (!cfg.stream) {
+      final json = jsonDecode(await res.stream.bytesToString());
+      final msg = (json['choices'] as List?)?.first?['message']
+          as Map<String, dynamic>?;
+      final text = msg?['content'] as String? ?? '';
+      final reasoning = (msg?['reasoning_content'] ?? msg?['reasoning'])
+              as String? ??
+          '';
+      yield StreamDelta(text: text, reasoning: reasoning);
+      return;
+    }
+
     await for (final line in _sseLines(res)) {
       if (line == '[DONE]') return;
       final json = _tryJson(line);
@@ -143,7 +155,7 @@ class LlmClient {
       'temperature': cfg.temperature,
       if (cfg.systemPrompt.trim().isNotEmpty) 'system': cfg.systemPrompt,
       'messages': messages,
-      'stream': true,
+      'stream': cfg.stream,
     });
 
     final req = http.Request('POST', uri)
@@ -157,6 +169,22 @@ class LlmClient {
     final res = await _http.send(req);
     if (res.statusCode >= 400) {
       throw LlmException(await _errorText(res));
+    }
+
+    if (!cfg.stream) {
+      final json = jsonDecode(await res.stream.bytesToString());
+      final blocks = json['content'] as List? ?? [];
+      final textBuf = StringBuffer();
+      final thinkBuf = StringBuffer();
+      for (final b in blocks) {
+        if (b['type'] == 'text') {
+          textBuf.write(b['text'] ?? '');
+        } else if (b['type'] == 'thinking') {
+          thinkBuf.write(b['thinking'] ?? '');
+        }
+      }
+      yield StreamDelta(text: textBuf.toString(), reasoning: thinkBuf.toString());
+      return;
     }
 
     await for (final line in _sseLines(res)) {

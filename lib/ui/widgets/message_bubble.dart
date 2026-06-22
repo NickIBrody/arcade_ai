@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
+import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import '../../l10n/strings.dart';
 import '../../models/chat.dart';
@@ -23,6 +25,7 @@ class MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUser = msg.role == Role.user;
+    if (!isUser && msg.compare) return _comparison(context);
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -94,6 +97,83 @@ class MessageBubble extends StatelessWidget {
               .toList(),
         ),
       );
+
+  Widget _comparison(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _candidateCard(context, msg.modelA, msg.text, msg.reasoning,
+              msg.streaming, msg.error, true),
+          const SizedBox(height: 10),
+          _candidateCard(context, msg.modelB, msg.altText, msg.altReasoning,
+              msg.altStreaming, msg.altError, false),
+        ],
+      ),
+    ).animate().fadeIn(duration: 260.ms);
+  }
+
+  Widget _candidateCard(BuildContext context, String model, String text,
+      String reasoning, bool streaming, String? error, bool isA) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHigh.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        border: Border.all(color: AppColors.stroke),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.balance_rounded,
+                  size: 14, color: AppColors.violetSoft),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(model.isEmpty ? '—' : model,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (showReasoning && reasoning.trim().isNotEmpty)
+            ThinkingBlock(reasoning: reasoning, live: streaming, l: l),
+          if (error != null)
+            Text('${l.errPrefix}: $error',
+                style: const TextStyle(color: AppColors.danger))
+          else if (text.isEmpty && streaming)
+            const _Dots()
+          else
+            MarkdownBody(
+              data: text,
+              styleSheet: _md(context),
+              selectable: true,
+              builders: {'pre': CodeBlockBuilder(l)},
+            ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: streaming
+                  ? null
+                  : () => context.read<AppState>().pickComparison(msg, isA),
+              icon: const Icon(Icons.check_rounded, size: 16),
+              label: Text(l.keepThis),
+              style: TextButton.styleFrom(
+                  foregroundColor: AppColors.violetSoft,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   MarkdownStyleSheet _md(BuildContext context) => MarkdownStyleSheet(
         p: const TextStyle(

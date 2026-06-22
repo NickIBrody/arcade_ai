@@ -247,6 +247,94 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // ---- compare two models on one prompt ----
+  Future<void> compareSend(String text, String modelB) async {
+    final provider = activeProvider;
+    if (provider == null || _sending || text.trim().isEmpty) return;
+    final modelA = settings.activeModel;
+
+    final session = currentSession;
+    if (session.title.isEmpty) {
+      session.title =
+          text.trim().length > 40 ? '${text.trim().substring(0, 40)}…' : text.trim();
+    }
+    session.messages.add(ChatMessage(role: Role.user, text: text));
+    final reply = ChatMessage(
+      role: Role.assistant,
+      compare: true,
+      streaming: true,
+      altStreaming: true,
+      modelA: modelA,
+      modelB: modelB,
+    );
+    session.messages.add(reply);
+    session.touch();
+    _sending = true;
+    _stop = false;
+    notifyListeners();
+
+    final history = session.messages.where((m) => m != reply).toList();
+    final key = await secure.readKey(provider.id) ?? '';
+    final extras = await secure.readExtras(provider.id);
+    GenerationConfig cfg() => GenerationConfig(
+          temperature: settings.temperature,
+          maxTokens: settings.maxTokens,
+          systemPrompt: settings.systemPrompt,
+          stream: settings.streamResponses,
+        );
+
+    Future<void> streamInto(String model, bool isA) async {
+      try {
+        await for (final d in _client.stream(
+            provider: provider,
+            apiKey: key,
+            model: model,
+            history: history,
+            config: cfg(),
+            extras: extras)) {
+          if (_stop) break;
+          if (isA) {
+            reply.text += d.text;
+            reply.reasoning += d.reasoning;
+          } else {
+            reply.altText += d.text;
+            reply.altReasoning += d.reasoning;
+          }
+          notifyListeners();
+        }
+      } catch (e) {
+        if (isA) {
+          reply.error = e.toString();
+        } else {
+          reply.altError = e.toString();
+        }
+      }
+    }
+
+    await Future.wait([streamInto(modelA, true), streamInto(modelB, false)]);
+    reply.streaming = false;
+    reply.altStreaming = false;
+    _sending = false;
+    session.touch();
+    await persistSessions();
+    notifyListeners();
+  }
+
+  Future<void> pickComparison(ChatMessage m, bool keepA) async {
+    if (!keepA) {
+      m.text = m.altText;
+      m.reasoning = m.altReasoning;
+      m.error = m.altError;
+    }
+    settings.activeModel = keepA ? m.modelA : m.modelB;
+    m.compare = false;
+    m.altText = '';
+    m.altReasoning = '';
+    await persistSettings();
+    await persistSessions();
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _client.dispose();

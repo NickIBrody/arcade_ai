@@ -39,6 +39,10 @@ class L {
   String get noChats => _p('Пока пусто', 'No chats yet');
   String get chatDeleted => _p('Чат удалён', 'Chat deleted');
   String get undo => _p('Отменить', 'Undo');
+  String get compareWith => _p('Сравнить с моделью', 'Compare with model');
+  String get keepThis => _p('Оставить этот', 'Keep this one');
+  String get compareHint =>
+      _p('Удержите «отправить» для сравнения', 'Hold Send to compare');
   String get copy => _p('Копировать', 'Copy');
   String get copied => _p('Скопировано', 'Copied');
 
@@ -85,6 +89,7 @@ class L {
   String get stepConnect => _p('Подключение', 'Connecting');
   String get stepDeps => _p('Установка окружения', 'Installing environment');
   String get stepOpencode => _p('Установка OpenCode', 'Installing OpenCode');
+  String get stepConfigure => _p('Настройка модели', 'Configuring model');
   String get stepLaunch => _p('Запуск OpenCode', 'Launching OpenCode');
   String get setupReady => _p('Готово', 'Ready');
   String get retry => _p('Повторить', 'Retry');

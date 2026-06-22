@@ -18,6 +18,15 @@ class ChatMessage {
   String? error;
   final DateTime at;
 
+  // ---- side-by-side comparison (two models answering one prompt) ----
+  bool compare;
+  String modelA;
+  String modelB;
+  String altText;
+  String altReasoning;
+  bool altStreaming;
+  String? altError;
+
   ChatMessage({
     required this.role,
     this.text = '',
@@ -26,6 +35,13 @@ class ChatMessage {
     this.streaming = false,
     this.error,
     DateTime? at,
+    this.compare = false,
+    this.modelA = '',
+    this.modelB = '',
+    this.altText = '',
+    this.altReasoning = '',
+    this.altStreaming = false,
+    this.altError,
   })  : images = images ?? [],
         at = at ?? DateTime.now();
 
