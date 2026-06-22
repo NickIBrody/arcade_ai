@@ -60,6 +60,23 @@ class L {
   String get unlock => _p('Разблокировать', 'Unlock');
   String get locked => _p('Заблокировано', 'Locked');
 
+  String get terminal => _p('Терминал', 'Terminal');
+  String get terminalHint => _p(
+      'Подключитесь к своей машине по SSH и запустите OpenCode прямо с телефона.',
+      'Connect to your own machine over SSH and run OpenCode from your phone.');
+  String get savedMachines => _p('Сохранённые машины', 'Saved machines');
+  String get sshHost => _p('Хост', 'Host');
+  String get sshUser => _p('Пользователь', 'User');
+  String get sshPort => _p('Порт', 'Port');
+  String get sshPassword => _p('Пароль', 'Password');
+  String get sshLabel => _p('Метка', 'Label');
+  String get sshLabelHint => _p('Мой VPS', 'My VPS');
+  String get rememberMachine => _p('Запомнить машину', 'Remember machine');
+  String get connect => _p('Подключиться', 'Connect');
+  String get connecting => _p('Подключение…', 'Connecting…');
+  String get exportKey => _p('Ключ', 'Key');
+  String get setupOpencode => _p('Установка', 'Setup');
+
   String get errPrefix => _p('Ошибка', 'Error');
   String get notFullySupported => _p(
       'Требует особой авторизации — настройте вручную',

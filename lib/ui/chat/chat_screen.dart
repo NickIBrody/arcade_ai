@@ -10,6 +10,7 @@ import '../../core/theme.dart';
 import '../../l10n/strings.dart';
 import '../../models/chat.dart';
 import '../settings/settings_screen.dart';
+import '../terminal/terminal_screen.dart';
 import '../widgets/ambient_background.dart';
 import '../widgets/message_bubble.dart';
 import 'model_switcher.dart';
@@ -261,6 +262,31 @@ class ChatDrawer extends StatelessWidget {
                         );
                       },
                     ),
+            ),
+            const Divider(color: AppColors.stroke, height: 1),
+            ListTile(
+              leading: const Icon(Icons.terminal_rounded,
+                  size: 20, color: AppColors.violetSoft),
+              title: Text(l.terminal,
+                  style: const TextStyle(
+                      color: AppColors.textPrimary, fontSize: 14.5)),
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.violet.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(AppRadii.pill),
+                ),
+                child: Text('BETA',
+                    style: TextStyle(
+                        color: AppColors.violetSoft,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700)),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => TerminalScreen(l: l)));
+              },
             ),
           ],
         ),

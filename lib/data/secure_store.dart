@@ -36,5 +36,21 @@ class SecureStore {
         .toList();
   }
 
+  // ---- SSH machines ----
+  Future<void> saveSshProfiles(String json) =>
+      _storage.write(key: 'ssh_profiles', value: json);
+
+  Future<String> readSshProfiles() async =>
+      await _storage.read(key: 'ssh_profiles') ?? '[]';
+
+  Future<void> saveSshPassword(String profileId, String password) =>
+      _storage.write(key: 'ssh_pw::$profileId', value: password);
+
+  Future<String?> readSshPassword(String profileId) =>
+      _storage.read(key: 'ssh_pw::$profileId');
+
+  Future<void> deleteSshPassword(String profileId) =>
+      _storage.delete(key: 'ssh_pw::$profileId');
+
   Future<void> wipe() => _storage.deleteAll();
 }
