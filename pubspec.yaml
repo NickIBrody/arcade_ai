@@ -1,0 +1,38 @@
+name: arcade_ai
+description: Arcade AI — universal multi-provider LLM chat client.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
+  provider: ^6.1.2
+  google_fonts: ^6.2.1
+  flutter_animate: ^4.5.0
+  flutter_secure_storage: ^9.2.2
+  shared_preferences: ^2.3.2
+  flutter_markdown: ^0.7.3
+  markdown: ^7.3.1
+  image_picker: ^1.1.2
+  local_auth: ^2.3.0
+  url_launcher: ^6.3.0
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icons/
+
+flutter_launcher_icons:
+  android: true
+  image_path: "assets/icons/icon.png"
+  adaptive_icon_background: "#07060A"
+  adaptive_icon_foreground: "assets/icons/icon_foreground.png"
+  min_sdk_android: 23
