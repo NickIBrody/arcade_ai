@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:cross_file/cross_file.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:image_picker/image_picker.dart';
@@ -40,16 +42,21 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final file = await picker.pickImage(
-        source: ImageSource.gallery, maxWidth: 1600, imageQuality: 85);
+    XFile? file;
+    if (Platform.isAndroid || Platform.isIOS) {
+      file = await ImagePicker().pickImage(
+          source: ImageSource.gallery, maxWidth: 1600, imageQuality: 85);
+    } else {
+      const group = XTypeGroup(
+          label: 'images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif']);
+      file = await openFile(acceptedTypeGroups: [group]);
+    }
     if (file == null) return;
-    final bytes = await File(file.path).readAsBytes();
-    final mime = file.path.toLowerCase().endsWith('.png')
-        ? 'image/png'
-        : 'image/jpeg';
+    final bytes = await file.readAsBytes();
+    final mime =
+        file.path.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
     setState(() => _pending.add(
-        Attachment(path: file.path, mime: mime, base64: base64Encode(bytes))));
+        Attachment(path: file!.path, mime: mime, base64: base64Encode(bytes))));
   }
 
   void _send() {

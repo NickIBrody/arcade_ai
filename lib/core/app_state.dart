@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 
 import '../data/providers_catalog.dart';
@@ -74,7 +75,8 @@ class AppState extends ChangeNotifier {
     _loadCustomProviders();
     _loadSessions();
     _loadExtraModels();
-    locked = settings.autoLockEnabled;
+    // Biometric auto-lock is a mobile-only feature (local_auth has no Linux backend).
+    locked = settings.autoLockEnabled && (Platform.isAndroid || Platform.isIOS);
     notifyListeners();
   }
 
