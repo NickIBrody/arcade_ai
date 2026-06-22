@@ -117,34 +117,6 @@ class ProvidersCatalog {
       accent: '00B956',
       models: ['GigaChat', 'GigaChat-Pro', 'GigaChat-Max'],
       keyHint: 'Authorization key (Base64)',
-      fullySupported: false,
-    ),
-    LlmProvider(
-      id: 'yandex',
-      name: 'YandexGPT',
-      tagline: 'Алиса / Foundation Models',
-      baseUrl: 'https://llm.api.cloud.yandex.net/foundationModels/v1',
-      format: ApiFormat.yandex,
-      accent: 'FC3F1D',
-      models: ['yandexgpt', 'yandexgpt-lite'],
-      keyHint: 'Api-Key',
-      extraFields: [
-        ExtraField(key: 'folder_id', label: 'Folder ID', hint: 'b1g...'),
-      ],
-      fullySupported: false,
-    ),
-    LlmProvider(
-      id: 'granite',
-      name: 'IBM Granite',
-      tagline: 'watsonx.ai',
-      baseUrl: 'https://us-south.ml.cloud.ibm.com/ml/v1',
-      format: ApiFormat.openai,
-      accent: '0F62FE',
-      models: ['ibm/granite-3-8b-instruct'],
-      extraFields: [
-        ExtraField(key: 'project_id', label: 'Project ID'),
-      ],
-      fullySupported: false,
     ),
     LlmProvider(
       id: 'ollama',
@@ -191,8 +163,6 @@ class ProvidersCatalog {
     'openrouter': 'Gateway to everything',
     'cohere': 'Command',
     'gigachat': 'Sber',
-    'yandex': 'Alice / Foundation Models',
-    'granite': 'watsonx.ai',
     'ollama': 'Ollama server (localhost)',
     'custom': 'Custom endpoint',
   };

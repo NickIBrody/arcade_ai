@@ -1,5 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:math' as math;
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 
 import '../models/chat.dart';
 import '../models/llm_provider.dart';
@@ -31,9 +34,117 @@ class LlmClient {
     switch (provider.format) {
       case ApiFormat.anthropic:
         return _anthropic(provider, apiKey, model, history, config);
+      case ApiFormat.gigachat:
+        return _gigachat(provider, apiKey, model, history, config);
       case ApiFormat.openai:
       default:
         return _openaiCompatible(provider, apiKey, model, history, config);
+    }
+  }
+
+  // ---- GigaChat (Sber): OAuth token from the Authorization key, then an
+  //      OpenAI-like chat. Sber uses a Russian root CA, so a dedicated client
+  //      trusts *.sberbank.ru. ----
+  IOClient? _sberClient;
+  String? _gigaToken;
+  DateTime? _gigaExpiry;
+
+  http.Client _sber() {
+    if (_sberClient != null) return _sberClient!;
+    final hc = HttpClient()
+      ..badCertificateCallback = (cert, host, port) =>
+          host.endsWith('sberbank.ru');
+    return _sberClient = IOClient(hc);
+  }
+
+  String _uuid() {
+    final r = math.Random();
+    String hex(int n) =>
+        List.generate(n, (_) => r.nextInt(16).toRadixString(16)).join();
+    return '${hex(8)}-${hex(4)}-4${hex(3)}-'
+        '${(8 + r.nextInt(4)).toRadixString(16)}${hex(3)}-${hex(12)}';
+  }
+
+  Future<String> _gigaTokenFor(String authKey) async {
+    if (_gigaToken != null &&
+        _gigaExpiry != null &&
+        DateTime.now()
+            .isBefore(_gigaExpiry!.subtract(const Duration(minutes: 1)))) {
+      return _gigaToken!;
+    }
+    final res = await _sber().post(
+      Uri.parse('https://ngw.devices.sberbank.ru:9443/api/v2/oauth'),
+      headers: {
+        'Authorization': 'Basic $authKey',
+        'RqUID': _uuid(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json',
+      },
+      body: {'scope': 'GIGACHAT_API_PERS'},
+    );
+    if (res.statusCode >= 400) {
+      throw LlmException('GigaChat auth ${res.statusCode}: ${res.body}');
+    }
+    final j = jsonDecode(res.body);
+    _gigaToken = j['access_token'] as String;
+    final exp = j['expires_at'];
+    _gigaExpiry = exp is int
+        ? DateTime.fromMillisecondsSinceEpoch(exp)
+        : DateTime.now().add(const Duration(minutes: 29));
+    return _gigaToken!;
+  }
+
+  Stream<StreamDelta> _gigachat(
+    LlmProvider p,
+    String authKey,
+    String model,
+    List<ChatMessage> history,
+    GenerationConfig cfg,
+  ) async* {
+    final token = await _gigaTokenFor(authKey);
+    final uri = Uri.parse('${_trim(p.baseUrl)}/chat/completions');
+    final messages = <Map<String, dynamic>>[];
+    if (cfg.systemPrompt.trim().isNotEmpty) {
+      messages.add({'role': 'system', 'content': cfg.systemPrompt});
+    }
+    for (final m in history) {
+      messages.add({'role': m.role.name, 'content': m.text});
+    }
+
+    final req = http.Request('POST', uri)
+      ..headers.addAll({
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      })
+      ..body = jsonEncode({
+        'model': model,
+        'messages': messages,
+        'temperature': cfg.temperature,
+        'max_tokens': cfg.maxTokens,
+        'stream': cfg.stream,
+      });
+
+    final res = await _sber().send(req);
+    if (res.statusCode >= 400) {
+      throw LlmException(await _errorText(res));
+    }
+
+    if (!cfg.stream) {
+      final json = jsonDecode(await res.stream.bytesToString());
+      final msg = (json['choices'] as List?)?.first?['message']
+          as Map<String, dynamic>?;
+      yield StreamDelta(text: msg?['content'] as String? ?? '');
+      return;
+    }
+
+    await for (final line in _sseLines(res)) {
+      if (line == '[DONE]') return;
+      final json = _tryJson(line);
+      final delta = (json?['choices'] as List?)?.first?['delta']
+          as Map<String, dynamic>?;
+      final text = delta?['content'] as String? ?? '';
+      if (text.isNotEmpty) yield StreamDelta(text: text);
     }
   }
 
@@ -241,5 +352,8 @@ class LlmClient {
   String _trim(String url) =>
       url.endsWith('/') ? url.substring(0, url.length - 1) : url;
 
-  void dispose() => _http.close();
+  void dispose() {
+    _http.close();
+    _sberClient?.close();
+  }
 }

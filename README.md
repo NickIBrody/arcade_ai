@@ -15,11 +15,13 @@ own endpoint (Polza AI, a proxy, or a local Ollama server).
   <img src="docs/screenshot-chat.jpg" width="300" alt="Arcade AI — chat screen">
 </p>
 
+<p align="center"><sub><i>Built on pure stubbornness and one heroically dying USB stick. 12 providers — and this time they actually work (we checked).</i></sub></p>
+
 ---
 
 ## Features
 
-- **14 built-in providers** + a fully custom one (any OpenAI- or Anthropic-compatible endpoint).
+- **12 built-in providers** + a fully custom one (any OpenAI- or Anthropic-compatible endpoint).
 - **Streaming responses** — text appears token by token, like the web chats.
 - **Reasoning view** — for thinking models (o-series, DeepSeek R1, Claude with
   extended thinking) a collapsible panel shows *how* the model reasoned before answering.
@@ -36,11 +38,11 @@ own endpoint (Polza AI, a proxy, or a local Ollama server).
 
 | Global | Russian / Regional | Local & custom |
 |---|---|---|
-| OpenAI, Anthropic, Google Gemini, Groq, DeepSeek, xAI Grok, Mistral, Together AI, OpenRouter, Cohere, IBM Granite | YandexGPT (Alice), GigaChat (Sber) | Ollama, any custom endpoint |
+| OpenAI, Anthropic, Google Gemini, Groq, DeepSeek, xAI Grok, Mistral, Together AI, OpenRouter, Cohere | GigaChat (Sber) | Ollama, any custom endpoint |
 
-> Providers requiring a special OAuth/IAM token exchange (YandexGPT, GigaChat,
-> watsonx) are wired with the correct request shape and flagged in the UI for
-> manual setup.
+> **GigaChat** uses Sber's OAuth: paste your Authorization key (Base64) and the
+> app fetches and refreshes the short-lived access token for you. Sber's Russian
+> root CA is trusted for `*.sberbank.ru` so requests don't fail on TLS.
 
 > **Local models (Ollama)** connect to a *running Ollama server* over HTTP
 > (`localhost:11434`) — the app does **not** load `.gguf` files directly. True
