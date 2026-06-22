@@ -253,7 +253,22 @@ class ChatDrawer extends StatelessWidget {
                           trailing: IconButton(
                             icon: const Icon(Icons.close_rounded,
                                 size: 18, color: AppColors.textFaint),
-                            onPressed: () => app.deleteSession(s.id),
+                            onPressed: () {
+                              app.deleteSession(s.id);
+                              ScaffoldMessenger.of(context)
+                                ..clearSnackBars()
+                                ..showSnackBar(SnackBar(
+                                  backgroundColor: AppColors.surfaceHigh,
+                                  content: Text(l.chatDeleted,
+                                      style: const TextStyle(
+                                          color: AppColors.textPrimary)),
+                                  action: SnackBarAction(
+                                    label: l.undo,
+                                    textColor: AppColors.violetSoft,
+                                    onPressed: app.restoreLastDeleted,
+                                  ),
+                                ));
+                            },
                           ),
                           onTap: () {
                             app.openSession(s.id);

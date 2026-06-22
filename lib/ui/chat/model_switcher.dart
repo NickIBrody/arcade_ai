@@ -18,8 +18,7 @@ class _ModelSwitcherState extends State<ModelSwitcher> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final p = app.activeProvider;
-    final models = p?.models ?? const [];
+    final models = app.modelsForActive;
     final maxH = MediaQuery.of(context).size.height * 0.7;
     return Container(
       constraints: BoxConstraints(maxHeight: maxH),
@@ -64,6 +63,8 @@ class _ModelSwitcherState extends State<ModelSwitcher> {
                           : Icons.radio_button_unchecked_rounded,
                       color: active ? AppColors.violet : AppColors.textFaint),
                   title: Text(m,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: AppColors.textPrimary)),
                 );
               }).toList(),
@@ -89,10 +90,12 @@ class _ModelSwitcherState extends State<ModelSwitcher> {
               ),
               const SizedBox(width: 10),
               IconButton(
-                onPressed: () {
-                  if (_manual.text.trim().isEmpty) return;
-                  app.setActiveModel(_manual.text.trim());
-                  Navigator.pop(context);
+                onPressed: () async {
+                  final m = _manual.text.trim();
+                  if (m.isEmpty) return;
+                  await app.addModel(m);
+                  await app.setActiveModel(m);
+                  if (context.mounted) Navigator.pop(context);
                 },
                 icon: const Icon(Icons.check_rounded, color: AppColors.violet),
               ),

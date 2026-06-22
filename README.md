@@ -65,6 +65,47 @@ answer shaped the final stack:
 
 The principle: every language must pull its weight, not pad a buzzword list.
 
+## Remote SSH terminal + OpenCode (experimental)
+
+> ⚠️ **Rough around the edges / work in progress.** The OpenCode integration is
+> hacked together and not battle-tested — treat it as an experiment, not a
+> finished feature. **In practice it currently works rather poorly: most of the
+> time only the free OpenCode models load (passing your own provider/key/model
+> via env often isn't picked up), and setting it up by hand is no better.**
+> Proper fix (writing OpenCode's config file) is still a TODO.
+
+A separate **Terminal (BETA)** screen (open it from the chat drawer) turns the
+app into a thin client for an agentic coding session running on **your own
+machine** — no servers on our side. The idea: bring your own compute (a VPS, a
+home PC, a Raspberry Pi) over SSH and run [OpenCode](https://github.com/sst/opencode)
+from your phone.
+
+**Flow:**
+1. Pick **your data** (the app's active provider + key + base URL + model) or
+   **Free** (OpenCode's built-in free models, no key).
+2. Enter the machine: host / user / port / password (saved encrypted in the
+   Keystore, optional).
+3. Choose a **run mode** — *with confirmation* or *auto (no confirmation)*.
+4. A clean step-by-step setup runs in the background (connect → detect package
+   manager → install Node/git → install OpenCode → launch). The raw install
+   output is hidden; on failure there's a collapsible log + retry.
+5. OpenCode's TUI is rendered in a real terminal emulator (`xterm`) over the SSH
+   shell, with quick keys (Esc/Tab/Ctrl-C, Ctrl+letter, arrows), paste, and a
+   "manual terminal" mode for power users.
+
+Built on `dartssh2` (SSH client) + `xterm` (terminal emulator) — the SSH protocol
+and the emulator are libraries; the app is the glue + provisioning + UI.
+
+**Known rough edges:**
+- Provider/key/URL/model are injected via **environment variables** as a
+  best-effort. OpenCode may read its own config file instead and **fall back to
+  free models** — writing OpenCode's config file is the proper fix (TODO).
+- The *auto/bypass* mode uses a guessed env var; the real flag is unverified.
+- Reachability: same LAN works; a machine behind NAT needs Tailscale / a public
+  IP / port forwarding.
+- Installing packages needs root or passwordless sudo; otherwise the install
+  prompts for a sudo password in the terminal.
+
 ## Architecture
 
 ```

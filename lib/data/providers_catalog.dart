@@ -162,7 +162,7 @@ class ProvidersCatalog {
   static LlmProvider customTemplate() => const LlmProvider(
         id: 'custom',
         name: 'Свой провайдер',
-        tagline: 'Прокси, агрегатор, локальный сервер…',
+        tagline: 'Свой эндпоинт',
         baseUrl: '',
         format: ApiFormat.openai,
         accent: '8B5CF6',
@@ -194,7 +194,7 @@ class ProvidersCatalog {
     'yandex': 'Alice / Foundation Models',
     'granite': 'watsonx.ai',
     'ollama': 'Ollama server (localhost)',
-    'custom': 'Proxy, aggregator, local server…',
+    'custom': 'Custom endpoint',
   };
 
   static String tagline(LlmProvider p, bool ru) =>

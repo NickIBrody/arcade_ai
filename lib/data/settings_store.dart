@@ -74,4 +74,9 @@ class SettingsStore {
   // chat history persisted as JSON list of sessions
   Future<void> saveSessions(String json) => _p.setString('sessions', json);
   String sessionsJson() => _p.getString('sessions') ?? '[]';
+
+  // user-added models, keyed by provider id: {"openai": ["gpt-x", ...]}
+  Future<void> saveExtraModels(String json) =>
+      _p.setString('extraModels', json);
+  String extraModelsJson() => _p.getString('extraModels') ?? '{}';
 }

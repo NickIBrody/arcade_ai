@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:xterm/xterm.dart';
 
@@ -50,6 +51,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   final _label = TextEditingController();
   bool _remember = true;
   bool _auto = false;
+  bool _useFree = false;
 
   final List<SshProfile> _profiles = [];
   final _terminal = Terminal(maxLines: 10000);
@@ -124,10 +126,17 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   String _launchCommand() {
-    final env =
-        _envForProvider[context.read<AppState>().activeProvider?.id] ?? 'API_KEY';
+    final p = context.read<AppState>().activeProvider;
+    final model = context.read<AppState>().settings.activeModel;
+    final env = _envForProvider[p?.id] ?? 'OPENAI_API_KEY';
     final b = StringBuffer();
-    if (_apiKey.isNotEmpty) b.write('export $env="$_apiKey"; ');
+    if (!_useFree) {
+      if (_apiKey.isNotEmpty) b.write('export $env="$_apiKey"; ');
+      if (p != null && p.format.name == 'openai' && p.baseUrl.isNotEmpty) {
+        b.write('export OPENAI_BASE_URL="${p.baseUrl}"; ');
+      }
+      if (model.isNotEmpty) b.write('export OPENCODE_MODEL="$model"; ');
+    }
     if (_auto) b.write('export OPENCODE_AUTO_APPROVE=1; ');
     b.write('opencode');
     return b.toString();
@@ -248,6 +257,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
         ),
         const SizedBox(height: 8),
         Text(l.terminalHint, style: Theme.of(context).textTheme.bodyMedium),
+        const SizedBox(height: 16),
+        _opencodeInfo(),
         const SizedBox(height: 18),
         if (_profiles.isNotEmpty) ...[
           FieldLabel(l.savedMachines),
@@ -351,6 +362,54 @@ class _TerminalScreenState extends State<TerminalScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _opencodeInfo() {
+    final app = context.watch<AppState>();
+    final p = app.activeProvider;
+    final model = app.settings.activeModel;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        border: Border.all(color: AppColors.stroke),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(l.opencodeProvider.toUpperCase(),
+              style: Theme.of(context).textTheme.labelSmall),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _modeChip(l.useMyProvider, !_useFree,
+                  () => setState(() => _useFree = false)),
+              const SizedBox(width: 10),
+              _modeChip(l.useFree, _useFree, () => setState(() => _useFree = true)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_useFree)
+            Text(l.freeHint, style: Theme.of(context).textTheme.bodyMedium)
+          else ...[
+            Text('${p?.name ?? "—"}  ·  ${model.isEmpty ? "—" : model}',
+                style: const TextStyle(
+                    color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+            if (p != null && p.format.name == 'openai' && p.baseUrl.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(p.baseUrl,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium),
+              ),
+            const SizedBox(height: 4),
+            Text(l.changeInApp, style: Theme.of(context).textTheme.labelSmall),
+          ],
+        ],
+      ),
     );
   }
 
@@ -520,6 +579,11 @@ class _TerminalScreenState extends State<TerminalScreen> {
                     style: Theme.of(context).textTheme.labelSmall),
               ),
               IconButton(
+                onPressed: _paste,
+                icon: const Icon(Icons.content_paste_rounded,
+                    color: AppColors.textSecondary, size: 20),
+              ),
+              IconButton(
                 onPressed: () => _ssh.run('opencode'),
                 icon: const Icon(Icons.play_arrow_rounded,
                     color: AppColors.success),
@@ -536,6 +600,43 @@ class _TerminalScreenState extends State<TerminalScreen> {
         ),
         _quickKeys(),
       ],
+    );
+  }
+
+  Future<void> _paste() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text;
+    if (text != null && text.isNotEmpty) _ssh.send(text);
+  }
+
+  Future<void> _ctrlDialog() async {
+    final ctrl = TextEditingController();
+    void sendCtrl(String v) {
+      if (v.isEmpty) return;
+      final code = v.toUpperCase().codeUnitAt(0) & 0x1f;
+      _ssh.send(String.fromCharCode(code));
+      Navigator.pop(context);
+    }
+
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.surfaceHigh,
+        title: Text('Ctrl + ?',
+            style: Theme.of(context).textTheme.titleMedium),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLength: 1,
+          textCapitalization: TextCapitalization.none,
+          style: const TextStyle(color: AppColors.textPrimary),
+          decoration: glassInput('a'),
+          onChanged: (v) {
+            if (v.isNotEmpty) sendCtrl(v);
+          },
+          onSubmitted: sendCtrl,
+        ),
+      ),
     );
   }
 
@@ -565,6 +666,25 @@ class _TerminalScreenState extends State<TerminalScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 6),
         child: Row(
           children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: GestureDetector(
+                onTap: _ctrlDialog,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.violet.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: AppColors.violet.withValues(alpha: 0.6)),
+                  ),
+                  child: const Text('Ctrl+_',
+                      style: TextStyle(
+                          color: AppColors.violetSoft, fontSize: 12.5)),
+                ),
+              ),
+            ),
             key('Esc', '\x1b'),
             key('Tab', '\t'),
             key('Ctrl-C', '\x03'),

@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import '../../l10n/strings.dart';
+import '../../services/update_service.dart';
 import '../widgets/ambient_background.dart';
 import '../onboarding/welcome_screen.dart';
 
@@ -171,12 +172,32 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ]),
 
+              _Section(title: l.updates, children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.info_outline_rounded,
+                      color: AppColors.violetSoft),
+                  title: Text('${l.version}  $kAppVersion',
+                      style: const TextStyle(color: AppColors.textPrimary)),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.system_update_rounded,
+                      color: AppColors.violetSoft),
+                  title: Text(l.checkUpdates,
+                      style: const TextStyle(color: AppColors.textPrimary)),
+                  trailing: const Icon(Icons.chevron_right_rounded,
+                      color: AppColors.textSecondary),
+                  onTap: () => _checkUpdates(context, l),
+                ),
+              ]),
+
               _Section(title: l.about, children: [
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.code_rounded,
                       color: AppColors.violetSoft),
-                  title: const Text('github.com/NickIBrody',
+                  title: const Text('github.com/NickIBrody/arcade_ai',
                       style: TextStyle(color: AppColors.textPrimary)),
                   subtitle: Text('Arcade AI',
                       style: Theme.of(context).textTheme.labelSmall),
@@ -219,6 +240,60 @@ class _Section extends StatelessWidget {
       ),
     );
   }
+}
+
+Future<void> _checkUpdates(BuildContext context, L l) async {
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.showSnackBar(SnackBar(
+    backgroundColor: AppColors.surfaceHigh,
+    duration: const Duration(milliseconds: 900),
+    content: Text('${l.checkUpdates}…',
+        style: const TextStyle(color: AppColors.textPrimary)),
+  ));
+  final info = await UpdateService.check();
+  if (!context.mounted) return;
+  if (info == null) {
+    messenger.showSnackBar(SnackBar(
+      backgroundColor: AppColors.surfaceHigh,
+      content: Text('${l.errPrefix}: network',
+          style: const TextStyle(color: AppColors.textPrimary)),
+    ));
+    return;
+  }
+  if (!info.available) {
+    messenger.showSnackBar(SnackBar(
+      backgroundColor: AppColors.surfaceHigh,
+      content: Text(l.upToDate,
+          style: const TextStyle(color: AppColors.textPrimary)),
+    ));
+    return;
+  }
+  showDialog(
+    context: context,
+    builder: (_) => AlertDialog(
+      backgroundColor: AppColors.surfaceHigh,
+      title: Text(l.updateAvailable,
+          style: const TextStyle(color: AppColors.textPrimary)),
+      content: Text('v${info.latest}',
+          style: const TextStyle(color: AppColors.textSecondary)),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(l.back,
+              style: const TextStyle(color: AppColors.textSecondary)),
+        ),
+        TextButton(
+          onPressed: () {
+            launchUrl(Uri.parse(info.url),
+                mode: LaunchMode.externalApplication);
+            Navigator.pop(context);
+          },
+          child: Text(l.download,
+              style: const TextStyle(color: AppColors.violetSoft)),
+        ),
+      ],
+    ),
+  );
 }
 
 class _LangChip extends StatelessWidget {

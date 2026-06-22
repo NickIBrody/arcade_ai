@@ -37,6 +37,8 @@ class L {
       _p('Спросите о чём угодно', 'Ask anything to begin');
   String get chats => _p('Чаты', 'Chats');
   String get noChats => _p('Пока пусто', 'No chats yet');
+  String get chatDeleted => _p('Чат удалён', 'Chat deleted');
+  String get undo => _p('Отменить', 'Undo');
   String get copy => _p('Копировать', 'Copy');
   String get copied => _p('Скопировано', 'Copied');
 
@@ -88,6 +90,22 @@ class L {
   String get retry => _p('Повторить', 'Retry');
   String get showDetails => _p('Подробнее', 'Details');
   String get manualTerminal => _p('Терминал вручную', 'Manual terminal');
+  String get opencodeProvider => _p('Модель для OpenCode', 'Model for OpenCode');
+  String get useMyProvider => _p('Мои данные', 'My data');
+  String get useFree => _p('Free (OpenCode)', 'Free (OpenCode)');
+  String get freeHint => _p(
+      'Бесплатные модели OpenCode (слабые, но без ключа)',
+      'OpenCode free models (weak, but no key)');
+  String get opencodeUses =>
+      _p('OpenCode возьмёт из приложения', 'OpenCode will use from the app');
+  String get changeInApp =>
+      _p('Сменить можно в выборе провайдера/модели', 'Change it in provider/model');
+  String get updates => _p('Обновления', 'Updates');
+  String get checkUpdates => _p('Проверить обновления', 'Check for updates');
+  String get upToDate => _p('Установлена последняя версия', 'You are up to date');
+  String get updateAvailable => _p('Доступно обновление', 'Update available');
+  String get download => _p('Скачать', 'Download');
+  String get version => _p('Версия', 'Version');
 
   String get errPrefix => _p('Ошибка', 'Error');
   String get notFullySupported => _p(

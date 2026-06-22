@@ -15,8 +15,26 @@ class AppState extends ChangeNotifier {
 
   late AppSettings settings;
   final List<LlmProvider> customProviders = [];
+  final Map<String, List<String>> extraModels = {};
   final List<ChatSession> sessions = [];
   String? _currentId;
+
+  List<String> get modelsForActive {
+    final p = activeProvider;
+    if (p == null) return const [];
+    final extra = extraModels[p.id] ?? const [];
+    return <String>[...p.models, ...extra.where((m) => !p.models.contains(m))];
+  }
+
+  Future<void> addModel(String model) async {
+    final p = activeProvider;
+    final m = model.trim();
+    if (p == null || m.isEmpty) return;
+    final list = extraModels.putIfAbsent(p.id, () => []);
+    if (!list.contains(m) && !p.models.contains(m)) list.add(m);
+    await _settingsStore.saveExtraModels(jsonEncode(extraModels));
+    notifyListeners();
+  }
 
   ChatSession get currentSession {
     if (sessions.isEmpty || !sessions.any((s) => s.id == _currentId)) {
@@ -55,6 +73,7 @@ class AppState extends ChangeNotifier {
     settings = await _settingsStore.load();
     _loadCustomProviders();
     _loadSessions();
+    _loadExtraModels();
     locked = settings.autoLockEnabled;
     notifyListeners();
   }
@@ -65,6 +84,14 @@ class AppState extends ChangeNotifier {
     for (final e in raw) {
       customProviders.add(LlmProvider.fromJson(e as Map<String, dynamic>));
     }
+  }
+
+  void _loadExtraModels() {
+    extraModels.clear();
+    final raw = jsonDecode(_settingsStore.extraModelsJson()) as Map;
+    raw.forEach((k, v) {
+      extraModels[k as String] = (v as List).cast<String>();
+    });
   }
 
   void _loadSessions() {
@@ -98,11 +125,25 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  ChatSession? _lastDeleted;
+
   Future<void> deleteSession(String id) async {
-    sessions.removeWhere((s) => s.id == id);
+    final idx = sessions.indexWhere((s) => s.id == id);
+    if (idx < 0) return;
+    _lastDeleted = sessions.removeAt(idx);
     if (_currentId == id) {
       _currentId = sessions.isEmpty ? null : orderedSessions.first.id;
     }
+    await persistSessions();
+    notifyListeners();
+  }
+
+  Future<void> restoreLastDeleted() async {
+    final s = _lastDeleted;
+    if (s == null) return;
+    sessions.add(s);
+    _currentId = s.id;
+    _lastDeleted = null;
     await persistSessions();
     notifyListeners();
   }
