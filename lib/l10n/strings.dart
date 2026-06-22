@@ -76,6 +76,18 @@ class L {
   String get connecting => _p('Подключение…', 'Connecting…');
   String get exportKey => _p('Ключ', 'Key');
   String get setupOpencode => _p('Установка', 'Setup');
+  String get start => _p('Запустить', 'Start');
+  String get runMode => _p('Режим запуска', 'Run mode');
+  String get modeConfirm => _p('С подтверждением', 'With confirmation');
+  String get modeAuto => _p('Авто (без подтверждений)', 'Auto (no confirmation)');
+  String get stepConnect => _p('Подключение', 'Connecting');
+  String get stepDeps => _p('Установка окружения', 'Installing environment');
+  String get stepOpencode => _p('Установка OpenCode', 'Installing OpenCode');
+  String get stepLaunch => _p('Запуск OpenCode', 'Launching OpenCode');
+  String get setupReady => _p('Готово', 'Ready');
+  String get retry => _p('Повторить', 'Retry');
+  String get showDetails => _p('Подробнее', 'Details');
+  String get manualTerminal => _p('Терминал вручную', 'Manual terminal');
 
   String get errPrefix => _p('Ошибка', 'Error');
   String get notFullySupported => _p(

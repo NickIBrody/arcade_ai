@@ -24,6 +24,17 @@ const Map<String, String> _envForProvider = {
   'cohere': 'COHERE_API_KEY',
 };
 
+enum _Stage { form, setup, terminal }
+
+enum _StepState { pending, active, done, failed }
+
+class _SetupStep {
+  final String label;
+  _StepState state = _StepState.pending;
+  String log = '';
+  _SetupStep(this.label);
+}
+
 class TerminalScreen extends StatefulWidget {
   final L l;
   const TerminalScreen({super.key, required this.l});
@@ -38,20 +49,35 @@ class _TerminalScreenState extends State<TerminalScreen> {
   final _pass = TextEditingController();
   final _label = TextEditingController();
   bool _remember = true;
+  bool _auto = false;
 
   final List<SshProfile> _profiles = [];
   final _terminal = Terminal(maxLines: 10000);
   final _ssh = SshSessionController();
-  bool _connected = false;
-  bool _connecting = false;
-  String? _error;
+
+  _Stage _stage = _Stage.form;
+  late List<_SetupStep> _steps;
+  bool _failed = false;
+  bool _showLog = false;
+  String? _formError;
+  String _apiKey = '';
 
   L get l => widget.l;
 
   @override
   void initState() {
     super.initState();
+    _resetSteps();
     _loadProfiles();
+  }
+
+  void _resetSteps() {
+    _steps = [
+      _SetupStep(l.stepConnect),
+      _SetupStep(l.stepDeps),
+      _SetupStep(l.stepOpencode),
+      _SetupStep(l.stepLaunch),
+    ];
   }
 
   Future<void> _loadProfiles() async {
@@ -59,11 +85,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     final list = (jsonDecode(raw) as List)
         .map((e) => SshProfile.fromJson(e as Map<String, dynamic>))
         .toList();
-    setState(() {
-      _profiles
-        ..clear()
-        ..addAll(list);
-    });
+    if (mounted) setState(() => _profiles..clear()..addAll(list));
   }
 
   void _fill(SshProfile p) {
@@ -72,41 +94,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     _user.text = p.username;
     _label.text = p.label;
     context.read<AppState>().secure.readSshPassword(p.id).then((pw) {
-      if (pw != null) _pass.text = pw;
-    });
-  }
-
-  Future<void> _connect() async {
-    final host = _host.text.trim();
-    final user = _user.text.trim();
-    if (host.isEmpty || user.isEmpty) {
-      setState(() => _error = '${l.errPrefix}: host / user');
-      return;
-    }
-    setState(() {
-      _connecting = true;
-      _error = null;
-      _connected = true;
-    });
-
-    if (_remember) await _saveProfile();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final ok = await _ssh.connect(
-        host: host,
-        port: int.tryParse(_port.text.trim()) ?? 22,
-        username: user,
-        password: _pass.text,
-        terminal: _terminal,
-      );
-      if (!mounted) return;
-      setState(() {
-        _connecting = false;
-        if (!ok) {
-          _connected = false;
-          _error = _ssh.error;
-        }
-      });
+      if (pw != null) setState(() => _pass.text = pw);
     });
   }
 
@@ -126,19 +114,94 @@ class _TerminalScreenState extends State<TerminalScreen> {
     await store.saveSshPassword(id, _pass.text);
   }
 
-  void _disconnect() {
-    _ssh.close();
-    setState(() => _connected = false);
+  void _set(int i, _StepState s, [String log = '']) {
+    if (!mounted) return;
+    setState(() {
+      _steps[i].state = s;
+      if (log.isNotEmpty) _steps[i].log = log;
+      if (s == _StepState.failed) _failed = true;
+    });
   }
 
-  Future<void> _exportKey() async {
+  String _launchCommand() {
+    final env =
+        _envForProvider[context.read<AppState>().activeProvider?.id] ?? 'API_KEY';
+    final b = StringBuffer();
+    if (_apiKey.isNotEmpty) b.write('export $env="$_apiKey"; ');
+    if (_auto) b.write('export OPENCODE_AUTO_APPROVE=1; ');
+    b.write('opencode');
+    return b.toString();
+  }
+
+  Future<void> _runSetup() async {
+    final host = _host.text.trim();
+    final user = _user.text.trim();
+    if (host.isEmpty || user.isEmpty) {
+      setState(() => _formError = '${l.errPrefix}: host / user');
+      return;
+    }
+    _formError = null;
+    if (_remember) await _saveProfile();
+
     final app = context.read<AppState>();
-    final p = app.activeProvider;
-    if (p == null) return;
-    final key = await app.secure.readKey(p.id);
-    if (key == null || key.isEmpty) return;
-    final env = _envForProvider[p.id] ?? 'API_KEY';
-    _ssh.run('export $env="$key"');
+    _apiKey = (await app.secure.readKey(app.activeProvider?.id ?? '')) ?? '';
+
+    _resetSteps();
+    setState(() {
+      _stage = _Stage.setup;
+      _failed = false;
+      _showLog = false;
+    });
+
+    _set(0, _StepState.active);
+    final ok = await _ssh.connect(
+        host: host,
+        port: int.tryParse(_port.text.trim()) ?? 22,
+        username: user,
+        password: _pass.text);
+    if (!ok) return _set(0, _StepState.failed, _ssh.error ?? 'connect failed');
+    _set(0, _StepState.done);
+
+    _set(1, _StepState.active);
+    final deps = await _ssh.exec(kInstallDepsCmd);
+    if (!deps.ok) return _set(1, _StepState.failed, deps.output);
+    _set(1, _StepState.done);
+
+    _set(2, _StepState.active);
+    final oc = await _ssh.exec(kInstallOpencodeCmd);
+    if (!oc.ok) return _set(2, _StepState.failed, oc.output);
+    _set(2, _StepState.done);
+
+    _set(3, _StepState.active);
+    setState(() => _stage = _Stage.terminal);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ssh.startShell(_terminal, initialCommand: _launchCommand());
+    });
+  }
+
+  Future<void> _manualTerminal() async {
+    final host = _host.text.trim();
+    if (host.isEmpty) {
+      setState(() => _formError = '${l.errPrefix}: host');
+      return;
+    }
+    final ok = await _ssh.connect(
+        host: host,
+        port: int.tryParse(_port.text.trim()) ?? 22,
+        username: _user.text.trim(),
+        password: _pass.text);
+    if (!ok) {
+      setState(() => _formError = _ssh.error);
+      return;
+    }
+    setState(() => _stage = _Stage.terminal);
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _ssh.startShell(_terminal));
+  }
+
+  void _disconnect() {
+    _ssh.close();
+    setState(() => _stage = _Stage.form);
   }
 
   @override
@@ -156,13 +219,18 @@ class _TerminalScreenState extends State<TerminalScreen> {
       body: AmbientBackground(
         intensity: 0.5,
         child: SafeArea(
-          child: _connected ? _terminalView() : _connectForm(),
+          child: switch (_stage) {
+            _Stage.form => _formView(),
+            _Stage.setup => _setupView(),
+            _Stage.terminal => _terminalView(),
+          },
         ),
       ),
     );
   }
 
-  Widget _connectForm() {
+  // ---------- form ----------
+  Widget _formView() {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       children: [
@@ -175,18 +243,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
             const SizedBox(width: 4),
             Text(l.terminal, style: Theme.of(context).textTheme.displaySmall),
             const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: AppColors.violet.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(AppRadii.pill),
-              ),
-              child: Text('BETA',
-                  style: TextStyle(
-                      color: AppColors.violetSoft,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700)),
-            ),
+            _betaTag(),
           ],
         ),
         const SizedBox(height: 8),
@@ -218,7 +275,9 @@ class _TerminalScreenState extends State<TerminalScreen> {
           const SizedBox(height: 18),
         ],
         FieldLabel(l.sshHost),
-        TextField(controller: _host, decoration: glassInput('192.168.1.10 / example.com')),
+        TextField(
+            controller: _host,
+            decoration: glassInput('192.168.1.10 / example.com')),
         const SizedBox(height: 14),
         Row(
           children: [
@@ -256,7 +315,16 @@ class _TerminalScreenState extends State<TerminalScreen> {
         const SizedBox(height: 14),
         FieldLabel(l.sshLabel),
         TextField(controller: _label, decoration: glassInput(l.sshLabelHint)),
-        const SizedBox(height: 14),
+        const SizedBox(height: 18),
+        FieldLabel(l.runMode),
+        Row(
+          children: [
+            _modeChip(l.modeConfirm, !_auto, () => setState(() => _auto = false)),
+            const SizedBox(width: 10),
+            _modeChip(l.modeAuto, _auto, () => setState(() => _auto = true)),
+          ],
+        ),
+        const SizedBox(height: 12),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: _remember,
@@ -265,74 +333,209 @@ class _TerminalScreenState extends State<TerminalScreen> {
           title: Text(l.rememberMachine,
               style: const TextStyle(color: AppColors.textPrimary)),
         ),
-        if (_error != null)
+        if (_formError != null)
           Padding(
-            padding: const EdgeInsets.only(top: 8, bottom: 8),
-            child: Text(_error!, style: const TextStyle(color: AppColors.danger)),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child:
+                Text(_formError!, style: const TextStyle(color: AppColors.danger)),
           ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 8),
         GlowButton(
-            label: l.connect, icon: Icons.terminal_rounded, onPressed: _connect),
+            label: l.start, icon: Icons.rocket_launch_rounded, onPressed: _runSetup),
+        const SizedBox(height: 12),
+        Center(
+          child: TextButton(
+            onPressed: _manualTerminal,
+            child: Text(l.manualTerminal,
+                style: const TextStyle(color: AppColors.textFaint, fontSize: 13)),
+          ),
+        ),
       ],
     );
   }
 
+  Widget _modeChip(String label, bool active, VoidCallback onTap) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 13),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: active
+                ? AppColors.violet.withValues(alpha: 0.16)
+                : AppColors.surface.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(AppRadii.md),
+            border: Border.all(
+                color: active ? AppColors.violet : AppColors.stroke),
+          ),
+          child: Text(label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: active ? AppColors.textPrimary : AppColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12.5)),
+        ),
+      ),
+    );
+  }
+
+  // ---------- setup progress ----------
+  Widget _setupView() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              IconButton(
+                  onPressed: _disconnect,
+                  icon: const Icon(Icons.arrow_back_rounded,
+                      color: AppColors.textPrimary)),
+              const SizedBox(width: 4),
+              Text(l.setupOpencode,
+                  style: Theme.of(context).textTheme.displaySmall),
+            ],
+          ),
+          const SizedBox(height: 30),
+          ..._steps.map(_stepTile),
+          const Spacer(),
+          if (_failed) ...[
+            GestureDetector(
+              onTap: () => setState(() => _showLog = !_showLog),
+              child: Row(
+                children: [
+                  Icon(_showLog ? Icons.expand_less : Icons.expand_more,
+                      color: AppColors.textSecondary, size: 20),
+                  Text(l.showDetails,
+                      style: const TextStyle(color: AppColors.textSecondary)),
+                ],
+              ),
+            ),
+            if (_showLog)
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.all(12),
+                constraints: const BoxConstraints(maxHeight: 200),
+                decoration: BoxDecoration(
+                  color: AppColors.background.withValues(alpha: 0.7),
+                  borderRadius: BorderRadius.circular(AppRadii.sm),
+                  border: Border.all(color: AppColors.stroke),
+                ),
+                child: SingleChildScrollView(
+                  child: Text(
+                    _steps.firstWhere((s) => s.state == _StepState.failed,
+                        orElse: () => _steps.last).log,
+                    style: const TextStyle(
+                        color: AppColors.textFaint,
+                        fontSize: 12,
+                        fontFamily: 'monospace'),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: GlowButton(
+                      label: l.retry,
+                      icon: Icons.refresh_rounded,
+                      onPressed: _runSetup),
+                ),
+                const SizedBox(width: 12),
+                TextButton(
+                    onPressed: _manualTerminal,
+                    child: Text(l.manualTerminal,
+                        style: const TextStyle(color: AppColors.textFaint))),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _stepTile(_SetupStep s) {
+    Widget icon;
+    switch (s.state) {
+      case _StepState.done:
+        icon = const Icon(Icons.check_circle_rounded,
+            color: AppColors.success, size: 24);
+        break;
+      case _StepState.active:
+        icon = const SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(
+                strokeWidth: 2.4, color: AppColors.violetSoft));
+        break;
+      case _StepState.failed:
+        icon = const Icon(Icons.error_rounded,
+            color: AppColors.danger, size: 24);
+        break;
+      case _StepState.pending:
+        icon = const Icon(Icons.circle_outlined,
+            color: AppColors.textFaint, size: 22);
+    }
+    final dim = s.state == _StepState.pending;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          SizedBox(width: 26, child: Center(child: icon)),
+          const SizedBox(width: 14),
+          Text(s.label,
+              style: TextStyle(
+                  color: dim ? AppColors.textFaint : AppColors.textPrimary,
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+
+  // ---------- terminal ----------
   Widget _terminalView() {
     return Column(
       children: [
-        _terminalBar(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppColors.surface.withValues(alpha: 0.8),
+            border: Border(bottom: BorderSide(color: AppColors.stroke)),
+          ),
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: _disconnect,
+                icon: const Icon(Icons.close_rounded,
+                    color: AppColors.textSecondary),
+              ),
+              Expanded(
+                child: Text('${_user.text}@${_host.text}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall),
+              ),
+              IconButton(
+                onPressed: () => _ssh.run('opencode'),
+                icon: const Icon(Icons.play_arrow_rounded,
+                    color: AppColors.success),
+              ),
+            ],
+          ),
+        ),
         Expanded(
           child: Container(
             color: const Color(0xFF050409),
-            child: TerminalView(
-              _terminal,
-              autofocus: true,
-              backgroundOpacity: 1,
-            ),
+            child: TerminalView(_terminal,
+                autofocus: true, backgroundOpacity: 1),
           ),
         ),
         _quickKeys(),
       ],
-    );
-  }
-
-  Widget _terminalBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.surface.withValues(alpha: 0.8),
-        border: Border(bottom: BorderSide(color: AppColors.stroke)),
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: _disconnect,
-            icon: const Icon(Icons.close_rounded, color: AppColors.textSecondary),
-          ),
-          Expanded(
-            child: Text(
-              _connecting ? l.connecting : '${_user.text}@${_host.text}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall,
-            ),
-          ),
-          TextButton(
-            onPressed: _exportKey,
-            child: Text(l.exportKey,
-                style: const TextStyle(color: AppColors.violetSoft, fontSize: 12)),
-          ),
-          TextButton(
-            onPressed: () => _ssh.run(kProvisionScript.replaceAll('\n', ' ')),
-            child: Text(l.setupOpencode,
-                style: const TextStyle(color: AppColors.violetSoft, fontSize: 12)),
-          ),
-          IconButton(
-            onPressed: () => _ssh.run('opencode'),
-            icon: const Icon(Icons.play_arrow_rounded, color: AppColors.success),
-          ),
-        ],
-      ),
     );
   }
 
@@ -376,4 +579,17 @@ class _TerminalScreenState extends State<TerminalScreen> {
       ),
     );
   }
+
+  Widget _betaTag() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: AppColors.violet.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(AppRadii.pill),
+        ),
+        child: Text('BETA',
+            style: TextStyle(
+                color: AppColors.violetSoft,
+                fontSize: 10,
+                fontWeight: FontWeight.w700)),
+      );
 }
